@@ -1,14 +1,28 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { SearchInput } from './components/SearchInput';
 import { ResultCard } from './components/ResultCard';
 import { SummaryCard } from './components/SummaryCard';
-// FIX: Import the 'getSummary' function to resolve the "Cannot find name 'getSummary'" error.
 import { getAiResponses, getAiImages, getSummary } from './services/geminiService';
 import { AI_MODELS } from './constants';
 import { type AIResult, type UploadedFile } from './types';
 import { GeminiIcon, SparklesIcon, AppLogoIcon } from './components/icons';
 import { ModelSelector } from './components/ModelSelector';
+
+// This is a global type declaration for the aistudio object.
+// It's a good practice to define types for external objects.
+// FIX: The original inline type for `window.aistudio` caused a conflict with
+// another global declaration which expected a named type `AIStudio`.
+// Defining and using the `AIStudio` interface resolves this conflict.
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+declare global {
+  interface Window {
+    aistudio: AIStudio;
+  }
+}
 
 const App: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -28,6 +42,41 @@ const App: React.FC = () => {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   
+  const [keyCheckStatus, setKeyCheckStatus] = useState<'checking' | 'found' | 'not_found'>('checking');
+
+  useEffect(() => {
+    if (window.aistudio) {
+      window.aistudio.hasSelectedApiKey().then(hasKey => {
+        setKeyCheckStatus(hasKey ? 'found' : 'not_found');
+      });
+    } else {
+      console.warn('window.aistudio not found. Assuming API key is present.');
+      setKeyCheckStatus('found');
+    }
+  }, []);
+
+  const handleSelectKey = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      setKeyCheckStatus('found');
+    } catch (e) {
+      console.error("Could not open API key selection dialog.", e);
+    }
+  };
+  
+  const handleError = (err: unknown) => {
+    let errorMessage = 'An unexpected error occurred. Please try again.';
+    if (err instanceof Error) {
+        if (err.message.includes('API Key must be set') || err.message.includes('API key not valid') || err.message.includes('Requested entity was not found')) {
+            errorMessage = 'Your API Key is invalid or missing. Please select a valid key to continue.';
+            setKeyCheckStatus('not_found');
+        } else {
+            errorMessage = `An error occurred: ${err.message}`;
+        }
+    }
+    setError(errorMessage);
+  };
+
   const handleModelToggle = (id: string) => {
     setSelectedModels(prev => {
       const newSet = new Set(prev);
@@ -92,12 +141,11 @@ const App: React.FC = () => {
         responses = await getAiResponses(query, modelsToQuery, uploadedFile);
       }
       
-      for (const res of responses) {
-          setResults(prev => prev.map(r => r.id === res.id ? { ...res, isLoading: false } : r));
-      }
+      // Update results as they come in, handling potential partial failures if service is updated
+      setResults(responses.map(res => ({ ...res, isLoading: false })));
 
     } catch (err) {
-      setError('An error occurred. Please check your API key and try again.');
+      handleError(err);
       setResults([]);
     } finally {
       setIsLoading(false);
@@ -119,8 +167,8 @@ const App: React.FC = () => {
       const summaryResponse = await getSummary(combinedResponses);
       setSummary(summaryResponse);
     } catch (err) {
+      handleError(err); // Use centralized error handler
       setSummaryError('An error occurred while generating the summary.');
-      console.error(err);
     } finally {
       setIsSummarizing(false);
     }
@@ -128,7 +176,6 @@ const App: React.FC = () => {
   
   const onModeChange = (mode: 'text' | 'image') => {
       setGenerationMode(mode);
-      // Clear file upload if switching to image mode
       if (mode === 'image') {
           setUploadedFile(null);
       }
@@ -136,6 +183,35 @@ const App: React.FC = () => {
 
   const allResultsLoaded = results.length > 0 && !results.some(r => r.isLoading);
   const isSearchDisabled = isLoading || !query.trim() || selectedModels.size === 0;
+  
+  if (keyCheckStatus === 'checking') {
+    return (
+      <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
+        Initializing...
+      </div>
+    );
+  }
+
+  if (keyCheckStatus === 'not_found') {
+    return (
+      <div className="bg-gray-900 min-h-screen text-gray-200 flex flex-col items-center justify-center p-4">
+        <div className="text-center p-8 bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+          <AppLogoIcon className="w-16 h-16 mx-auto mb-4 text-purple-400" />
+          <h1 className="text-2xl font-bold text-white mb-2">Welcome to AI Search Aggregator</h1>
+          <p className="text-gray-400 mb-6">To use the generative AI features of this application, you need to select a valid API key.</p>
+          <button 
+            onClick={handleSelectKey}
+            className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-full hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-purple-500 transition-all duration-300 transform hover:scale-105"
+          >
+            Select API Key
+          </button>
+           <p className="text-xs text-gray-500 mt-4">
+              For more information on billing, please visit <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-400">ai.google.dev/gemini-api/docs/billing</a>.
+          </p>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="bg-gray-900 min-h-screen text-gray-200 flex flex-col">
