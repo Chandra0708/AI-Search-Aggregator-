@@ -1,0 +1,5 @@
+{
+  "name": "AI Search Aggregator",
+  "description": "An application that allows users to search a query with text and images, and see simulated results from various AI models. It can generate both text responses with sources and AI-powered images.",
+  "requestFramePermissions": []
+}
