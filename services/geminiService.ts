@@ -1,14 +1,13 @@
 import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import { type AIResult, type Source, type AIModel, type UploadedFile } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const cleanResponseText = (text: string): string => {
   return text.replace(/[*#]/g, '');
 };
 
 async function getSingleResponse(prompt: string, systemInstruction: string, file: UploadedFile | null): Promise<{ text: string, sources: Source[] }> {
   try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const parts: any[] = [{ text: prompt }];
     if (file) {
       parts.unshift({
@@ -56,6 +55,7 @@ export const getAiResponses = async (userPrompt: string, modelsToQuery: AIModel[
 
 async function getSingleImage(prompt: string, model: AIModel): Promise<Partial<AIResult>> {
     try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const fullPrompt = `${prompt}. Style influenced by ${model.name}.`;
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -92,6 +92,7 @@ export const getAiImages = async (userPrompt: string, modelsToQuery: AIModel[]):
 
 
 export async function getSummary(combinedText: string): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const systemInstruction = `You are an expert summarizer. Your task is to read the following text which contains responses from multiple AI models, separated by '---'. Create a single, collated summary of all the information. Your summary should be well-structured, coherent, and easy to read. Crucially, you must cite the source AI model for each piece of information in your summary. For example, "(Source: Gemini)" or "According to ChatGPT, ...".`;
   const prompt = `Here are the responses to summarize:\n\n${combinedText}`;
   
